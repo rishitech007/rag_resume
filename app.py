@@ -9,11 +9,21 @@ from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.agents import AgentExecutor, create_tool_calling_agent
+from utils.constants import CHUNK_SIZE, CHUNK_OVERLAP, EMBEDDING_MODEL, GPT_MODEL, FAISS_DB, TEMPERATURE, PDF_DATA
 import os
 
 
 
 def pdf_read(pdf_doc):
+    """
+    Method to read PDF files and extract text from it.
+    
+    Parameters:
+    pdf_doc(list): List of PDF files.
+    
+    Returns:
+    (str): String containing the data in the pdf file.
+    """
     text = ""
     for pdf in pdf_doc:
         pdf_reader = PdfReader(pdf)
@@ -21,22 +31,37 @@ def pdf_read(pdf_doc):
             text += page.extract_text()
     return text
 
-
-
 def get_chunks(text):
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    """
+    Method to extract chunks from raw text.
+    
+    Parameters:
+    text(str): String of the read text file.
+    
+    Returns:
+    chunks(list): Chunks of text based on splitter method used.
+    """
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     chunks = text_splitter.split_text(text)
     return chunks
 
 
-def vector_store(text_chunks):       
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+def vector_store(text_chunks):    
+    """
+    Method to create a vector store of the embeddings.
+
+    Parameters:
+    text_chunks(list): List of chunks of text from raw strings.
+    Returns:
+    None
+    """
+    embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
-    vector_store.save_local("faiss_db")
+    vector_store.save_local(FAISS_DB)
 
 
-def get_conversational_chain(tools,ques):
-    llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
+def get_conversational_chain(tools, ques):
+    llm = ChatOpenAI(model_name=GPT_MODEL, temperature=TEMPERATURE)
     prompt = ChatPromptTemplate.from_messages(
     [
         (
@@ -61,11 +86,17 @@ def get_conversational_chain(tools,ques):
 
 
 def user_input(user_question):
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-    new_db = FAISS.load_local("faiss_db", embeddings,allow_dangerous_deserialization=True)
+    """
+    Method to call RAG chain to get response for query from user.
+
+    Parameters:
+    user_question(str): Query asked by user
+    """
+    embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
+    new_db = FAISS.load_local(FAISS_DB, embeddings,allow_dangerous_deserialization=True)
     retriever=new_db.as_retriever()
-    retrieval_chain= create_retriever_tool(retriever,"pdf_extractor","This tool is to give answer to queries from the pdf")
-    get_conversational_chain(retrieval_chain,user_question)
+    retrieval_chain= create_retriever_tool(retriever, "pdf_extractor", "This tool is to give answer to queries from the pdf")
+    get_conversational_chain(retrieval_chain, user_question)
 
 
 
@@ -87,8 +118,7 @@ def main():
     
     if user_question and openai_api_key:
         user_input(user_question)
- 
-    raw_text = pdf_read(['data/resume.pdf'])
+    raw_text = pdf_read(PDF_DATA)
     text_chunks = get_chunks(raw_text)
     vector_store(text_chunks)
 
